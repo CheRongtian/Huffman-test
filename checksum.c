@@ -1,19 +1,27 @@
 #include "checksum.h"
-#include <sys/types.h>
 
-u_short cksum(u_short *buf, int count) // Checksum process
+uint32_t crc32_begin(void)
 {
-    register u_long sum = 0;
-    
-    while(count --)
+    return UINT32_C(0xFFFFFFFF);
+}
+
+uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t size)
+{
+    for (size_t i = 0; i < size; i++)
     {
-        sum += *buf++;
-        if(sum & 0xFFFF0000) // if upper 16 bit AND sum == 1
+        crc ^= data[i];
+
+        for (unsigned int bit = 0; bit < 8; bit++)
         {
-            /* carry occurred, so wrap around */
-            sum &= 0xFFFF; // sum AND 16-bit 1
-            sum ++; // wrap around
+            uint32_t mask = (uint32_t)-(int32_t)(crc & 1U);
+            crc = (crc >> 1U) ^ (UINT32_C(0xEDB88320) & mask);
         }
     }
-    return ~(sum & 0xFFFF);
+
+    return crc;
+}
+
+uint32_t crc32_finish(uint32_t crc)
+{
+    return crc ^ UINT32_C(0xFFFFFFFF);
 }

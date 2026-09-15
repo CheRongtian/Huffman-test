@@ -2,47 +2,19 @@
 #define HUFF_H
 
 #include <stddef.h>
+#include <stdint.h>
 
-typedef enum 
-{
-    LEAF,
-    NODE
-} Kind;
+#define HUFFMAN_SYMBOLS 256U
+#define HUFFMAN_MAX_CODE_BITS 255U
 
-typedef struct Tree Tree;
+int huffman_compress(const uint8_t *input, size_t input_size,
+                     uint8_t code_lengths[HUFFMAN_SYMBOLS],
+                     uint8_t **output, size_t *output_size,
+                     uint64_t *output_bit_count);
 
-struct Tree 
-{
-    Kind kind;
-    Tree *up;
-
-    union 
-    {
-        struct 
-        {
-            char ch;
-            int freq;
-        } leaf;
-
-        struct 
-        {
-            int freq;
-            Tree *left;
-            Tree *right;
-        } node;
-    };
-};
-
-Tree *mkleaf(char ch, int freq);
-Tree *mknode(Tree *left, Tree *right);
-
-void conn(Tree *parent, int isleft, Tree *child);
-void show(Tree *tree);
-
-Tree *buildtree(int freq[256]);
-
-void buildcodes(Tree *root, char codes[256][256]);
-int encode(const char *text, char codes[256][256], char *output, size_t output_size);
-int decode(Tree *root, const char *bits, char *output, size_t output_size);
+int huffman_decompress(const uint8_t *input, size_t input_size,
+                       uint64_t input_bit_count,
+                       const uint8_t code_lengths[HUFFMAN_SYMBOLS],
+                       uint8_t *output, size_t output_size);
 
 #endif

@@ -1,85 +1,75 @@
+#include "format.h"
+
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
-#include "huff.h"
+#include <time.h>
 
-void countfreq(const char *text, int freq[256])
+static void print_usage(const char *program)
 {
-    while (*text != '\0') 
-    {
-        freq[(unsigned char)*text]++;
-        text++;
-    }
+    fprintf(stderr,
+            "Usage:\n"
+            "  %s -c <input> <output.mgz>\n"
+            "  %s -d <input.mgz> <output>\n",
+            program, program);
 }
 
-void showfreq(int freq[256])
+static void print_stats(const CodecStats *stats, double elapsed,
+                        int compressing)
 {
-    for (int i = 0; i < 256; i++) 
+    if (compressing)
     {
-        if (freq[i] > 0) printf("'%c' = %d\n", i, freq[i]);
+        double saving = stats->input_size == 0
+            ? 0.0
+            : (1.0 - (double)stats->output_size /
+                         (double)stats->input_size) * 100.0;
+
+        printf("Original size:   %" PRIu64 " bytes\n", stats->input_size);
+        printf("Compressed size: %" PRIu64 " bytes\n", stats->output_size);
+        printf("Space saving:    %.2f%%\n", saving);
     }
+    else
+    {
+        printf("Compressed size: %" PRIu64 " bytes\n", stats->input_size);
+        printf("Restored size:   %" PRIu64 " bytes\n", stats->output_size);
+    }
+
+    printf("Blocks:          %" PRIu32 " compressed, %" PRIu32 " stored\n",
+           stats->compressed_blocks, stats->stored_blocks);
+    printf("Elapsed:         %.3f seconds\n", elapsed);
 }
 
-void showcodes(int freq[256], char codes[256][256])
+int main(int argc, char **argv)
 {
-    for (int i = 0; i < 256; i++) 
+    if (argc == 2 &&
+        (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0))
     {
-        if (freq[i] > 0) printf("'%c' = %s\n", i, codes[i]);
+        print_usage(argv[0]);
+        return 0;
     }
-}
 
-int main(void)
-{
-    const char *text = "aaabbcdddd";
-    int freq[256] = {0};
-
-    countfreq(text, freq);
-    printf("Frequency:\n");
-    showfreq(freq);
-
-    Tree *root = buildtree(freq);
-
-    if (root == NULL) 
+    if (argc != 4 ||
+        (strcmp(argv[1], "-c") != 0 && strcmp(argv[1], "-d") != 0))
     {
-        printf("failed to build tree\n");
+        print_usage(argv[0]);
+        return 2;
+    }
+
+    CodecStats stats;
+    char error[256] = {0};
+    clock_t started = clock();
+    int compressing = strcmp(argv[1], "-c") == 0;
+    int success = compressing
+        ? mgz_compress_file(argv[2], argv[3], &stats, error, sizeof(error))
+        : mgz_decompress_file(argv[2], argv[3], &stats, error, sizeof(error));
+    double elapsed = (double)(clock() - started) / (double)CLOCKS_PER_SEC;
+
+    if (!success)
+    {
+        fprintf(stderr, "huff: %s\n", error[0] == '\0' ? "operation failed" : error);
         return 1;
     }
 
-    printf("\nHuffman Tree:\n");
-    show(root);
-
-    char codes[256][256] = {{0}};
-
-    buildcodes(root, codes);
-    printf("\nHuffman Codes:\n");
-    showcodes(freq, codes);
-
-    char encoded[4096];
-
-    if (!encode(text, codes, encoded, sizeof(encoded))) 
-    {
-        printf("encode failed\n");
-        return 1;
-    }
-
-    printf("\nOriginal:\n");
-    printf("%s\n", text);
-    printf("\nEncoded:\n");
-    printf("%s\n", encoded);
-
-    char decoded[1024];
-
-    if (!decode(root, encoded, decoded, sizeof(decoded))) 
-    {
-        printf("decode failed\n");
-        return 1;
-    }
-
-    printf("\nDecoded:\n");
-    printf("%s\n", decoded);
-    printf("\nResult:\n");
-
-    if (strcmp(text, decoded) == 0) printf("SUCCESS\n");
-    else printf("FAILED\n");
-
+    print_stats(&stats, elapsed, compressing);
     return 0;
 }
