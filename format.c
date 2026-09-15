@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define MGZ_VERSION 1U
 #define MGZ_HEADER_SIZE 32U
@@ -18,6 +19,18 @@
 #define MGZ_METHOD_LZ77_HUFFMAN 1U
 
 static const uint8_t mgz_magic[4] = {'M', 'G', 'Z', '1'};
+
+static uint64_t get_path_size(const char *path)
+{
+#if defined(_WIN32)
+    struct _stat64 info;
+    if (_stat64(path, &info) != 0 || info.st_size < 0) return 0;
+#else
+    struct stat info;
+    if (stat(path, &info) != 0 || info.st_size < 0) return 0;
+#endif
+    return (uint64_t)info.st_size;
+}
 
 static void clear_stats(CodecStats *stats)
 {
@@ -35,6 +48,22 @@ static void set_system_error(char *error, size_t error_size,
 {
     if (error == NULL || error_size == 0) return;
     snprintf(error, error_size, "%s: %s", operation, strerror(errno));
+}
+
+static int report_progress(const CodecOptions *options,
+                           uint64_t completed_bytes,
+                           uint64_t total_bytes,
+                           char *error, size_t error_size)
+{
+    if (options == NULL || options->progress == NULL) return 1;
+    if (options->progress(completed_bytes, total_bytes,
+                          options->user_data))
+    {
+        return 1;
+    }
+
+    set_error(error, error_size, "operation cancelled");
+    return 0;
 }
 
 static int write_bytes(FILE *file, const void *data, size_t size)
@@ -310,7 +339,8 @@ cleanup:
 }
 
 int mgz_compress_file(const char *input_path, const char *output_path,
-                      CodecStats *stats, char *error, size_t error_size)
+                      const CodecOptions *options, CodecStats *stats,
+                      char *error, size_t error_size)
 {
     clear_stats(stats);
     if (input_path == NULL || output_path == NULL ||
@@ -345,6 +375,7 @@ int mgz_compress_file(const char *input_path, const char *output_path,
     uint32_t compressed_blocks = 0;
     uint32_t stored_blocks = 0;
     uint32_t crc = crc32_begin();
+    uint64_t input_size = get_path_size(input_path);
 
     if (block == NULL)
     {
@@ -354,6 +385,10 @@ int mgz_compress_file(const char *input_path, const char *output_path,
     if (!write_file_header(output, 0, 0, 0))
     {
         set_system_error(error, error_size, "cannot write MGZ header");
+        goto cleanup;
+    }
+    if (!report_progress(options, 0, input_size, error, error_size))
+    {
         goto cleanup;
     }
 
@@ -433,6 +468,12 @@ int mgz_compress_file(const char *input_path, const char *output_path,
         free(bits);
         bits = NULL;
         block_count++;
+
+        if (!report_progress(options, original_size, input_size,
+                             error, error_size))
+        {
+            goto cleanup;
+        }
     }
 
     crc = crc32_finish(crc);
@@ -473,7 +514,8 @@ cleanup:
 }
 
 int mgz_decompress_file(const char *input_path, const char *output_path,
-                        CodecStats *stats, char *error, size_t error_size)
+                        const CodecOptions *options, CodecStats *stats,
+                        char *error, size_t error_size)
 {
     clear_stats(stats);
     if (input_path == NULL || output_path == NULL ||
@@ -520,6 +562,10 @@ int mgz_decompress_file(const char *input_path, const char *output_path,
     if (decoded == NULL)
     {
         set_error(error, error_size, "out of memory for output block");
+        goto cleanup;
+    }
+    if (!report_progress(options, 0, original_size, error, error_size))
+    {
         goto cleanup;
     }
 
@@ -592,6 +638,12 @@ int mgz_decompress_file(const char *input_path, const char *output_path,
         read_size += MGZ_BLOCK_HEADER_SIZE + payload_size;
         free(payload);
         payload = NULL;
+
+        if (!report_progress(options, decoded_total, original_size,
+                             error, error_size))
+        {
+            goto cleanup;
+        }
     }
 
     if (decoded_total != original_size)

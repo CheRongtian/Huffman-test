@@ -60,8 +60,10 @@ int main(int argc, char **argv)
     clock_t started = clock();
     int compressing = strcmp(argv[1], "-c") == 0;
     int success = compressing
-        ? mgz_compress_file(argv[2], argv[3], &stats, error, sizeof(error))
-        : mgz_decompress_file(argv[2], argv[3], &stats, error, sizeof(error));
+        ? mgz_compress_file(argv[2], argv[3], NULL, &stats,
+                            error, sizeof(error))
+        : mgz_decompress_file(argv[2], argv[3], NULL, &stats,
+                              error, sizeof(error));
     double elapsed = (double)(clock() - started) / (double)CLOCKS_PER_SEC;
 
     if (!success)
