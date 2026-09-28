@@ -1,0 +1,30 @@
+Custom gzip decompression verification
+======================================
+
+This file was generated specifically for the final decompression test.
+
+0123456789
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+abcdefghijklmnopqrstuvwxyz
+
+The decompressor should rebuild every byte in this file.
+
+Huffman Huffman Huffman Huffman Huffman
+LZ77 LZ77 LZ77 LZ77 LZ77
+compression compression compression compression
+decompression decompression decompression decompression
+
+Repeated section:
+apple banana orange apple banana orange
+apple banana orange apple banana orange
+apple banana orange apple banana orange
+apple banana orange apple banana orange
+apple banana orange apple banana orange
+
+Symbols:
+!@#$%^&*()_+-=[]{};:',.<>/?
+
+Final verification line:
+If this line exists in the output file, the decompressor reached the end correctly.
+
+END-OF-FILE

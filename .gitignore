@@ -1,2 +1,4 @@
 build/
 huff
+main
+*_output.txt
