@@ -85,11 +85,14 @@ void DropArea::setCompact(bool compact)
 void DropArea::setExtractMode(bool extracting)
 {
     titleLabel_->setText(extracting
-        ? tr("Drop MGZ archives here")
+        ? tr("Drop MGZ or GZIP archives here")
         : tr("Drop files here"));
     subtitleLabel_->setText(extracting
-        ? tr("Archives are validated before their contents are restored.")
+        ? tr("MGZ and single-member GZIP archives are validated locally.")
         : tr("Files stay on this computer and are processed locally."));
+    setAccessibleDescription(extracting
+        ? tr("Drop MGZ or GZIP archives here, or press Enter to choose files.")
+        : tr("Drop files here or press Enter to open the file picker."));
 }
 
 void DropArea::setInteractionEnabled(bool enabled)

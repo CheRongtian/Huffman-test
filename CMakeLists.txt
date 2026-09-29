@@ -22,6 +22,7 @@ add_library(mgz_core STATIC
     lz77.c
     checksum.c
     format.c
+    gzip/gzip_decode.c
 )
 target_include_directories(mgz_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 mgz_enable_warnings(mgz_core)

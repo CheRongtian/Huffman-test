@@ -2,7 +2,11 @@
 
 set -e
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+FIXTURE_DIR="${SCRIPT_DIR}/fixtures"
+
+cd "${FIXTURE_DIR}"
 
 echo "========================================"
 echo "1. 清理旧测试文件"
@@ -11,7 +15,7 @@ echo "========================================"
 rm -f test2.txt
 rm -f test2.gz
 rm -f test2_output.txt
-rm -f main
+rm -f "${SCRIPT_DIR}/main"
 
 echo
 echo "========================================"
@@ -66,10 +70,14 @@ echo "压缩文件大小: $(wc -c < test2.gz) bytes"
 
 echo
 echo "========================================"
-echo "4. 编译 main.c"
+echo "4. 编译 GZIP 解压程序"
 echo "========================================"
 
-clang -o main main.c
+clang -std=c11 -Wall -Wextra -Wpedantic -I"${PROJECT_DIR}" \
+    -o "${SCRIPT_DIR}/main" \
+    "${PROJECT_DIR}/tools/gunzip.c" \
+    "${PROJECT_DIR}/gzip/gzip_decode.c" \
+    "${PROJECT_DIR}/checksum.c"
 
 echo "编译成功"
 
@@ -78,7 +86,7 @@ echo "========================================"
 echo "5. 使用自己的程序解压 test2.gz"
 echo "========================================"
 
-./main
+"${SCRIPT_DIR}/main" test2.gz test2_output.txt
 
 echo
 echo "========================================"

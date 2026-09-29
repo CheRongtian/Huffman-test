@@ -45,6 +45,16 @@
 #include <cmath>
 #include <utility>
 
+namespace
+{
+constexpr int FileColumn = 0;
+constexpr int FormatColumn = 1;
+constexpr int SizeColumn = 2;
+constexpr int OutputColumn = 3;
+constexpr int StatusColumn = 4;
+constexpr int RemoveColumn = 5;
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -87,7 +97,7 @@ void MainWindow::setupUi()
     auto *title = new QLabel(tr("MGZ Compressor"), this);
     title->setObjectName(QStringLiteral("appTitle"));
     auto *subtitle = new QLabel(
-        tr("Local block compression with LZ77 and Canonical Huffman"), this);
+        tr("Local MGZ compression with MGZ and GZIP extraction"), this);
     subtitle->setObjectName(QStringLiteral("secondaryText"));
     titleLayout->addWidget(title);
     titleLayout->addWidget(subtitle);
@@ -136,9 +146,10 @@ void MainWindow::setupUi()
     root->addLayout(filesHeader);
 
     fileTree_ = new QTreeWidget(this);
-    fileTree_->setColumnCount(5);
+    fileTree_->setColumnCount(6);
     fileTree_->setHeaderLabels(
-        {tr("File"), tr("Size"), tr("Output"), tr("Status"), QString()});
+        {tr("File"), tr("Format"), tr("Size"), tr("Output"),
+         tr("Status"), QString()});
     fileTree_->setRootIsDecorated(false);
     fileTree_->setUniformRowHeights(false);
     fileTree_->setAlternatingRowColors(false);
@@ -146,13 +157,17 @@ void MainWindow::setupUi()
     fileTree_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     fileTree_->setMinimumHeight(150);
     fileTree_->header()->setStretchLastSection(false);
-    fileTree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    fileTree_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    fileTree_->header()->setSectionResizeMode(2, QHeaderView::Stretch);
-    fileTree_->header()->setSectionResizeMode(3, QHeaderView::Fixed);
-    fileTree_->header()->setSectionResizeMode(4, QHeaderView::Fixed);
-    fileTree_->setColumnWidth(3, 132);
-    fileTree_->setColumnWidth(4, 42);
+    fileTree_->header()->setSectionResizeMode(FileColumn, QHeaderView::Stretch);
+    fileTree_->header()->setSectionResizeMode(FormatColumn, QHeaderView::Fixed);
+    fileTree_->header()->setSectionResizeMode(SizeColumn,
+                                              QHeaderView::ResizeToContents);
+    fileTree_->header()->setSectionResizeMode(OutputColumn,
+                                              QHeaderView::Stretch);
+    fileTree_->header()->setSectionResizeMode(StatusColumn, QHeaderView::Fixed);
+    fileTree_->header()->setSectionResizeMode(RemoveColumn, QHeaderView::Fixed);
+    fileTree_->setColumnWidth(FormatColumn, 72);
+    fileTree_->setColumnWidth(StatusColumn, 132);
+    fileTree_->setColumnWidth(RemoveColumn, 42);
     fileTree_->setVisible(false);
     fileTree_->setAccessibleName(tr("Files to process"));
     root->addWidget(fileTree_, 1);
@@ -332,8 +347,8 @@ void MainWindow::setupMenus()
             this,
             tr("About MGZ Compressor"),
             tr("MGZ Compressor 1.1\n\n"
-               "A local block-compression utility built with Qt, LZ77, "
-               "Canonical Huffman coding, and CRC32."));
+               "A local compression and extraction utility built with Qt, "
+               "LZ77, Canonical Huffman coding, DEFLATE, and CRC32."));
     });
 }
 
@@ -581,10 +596,9 @@ void MainWindow::setMode(bool compressing)
 
     compressMode_ = compressing;
     dropArea_->setExtractMode(!compressMode_);
-    suffixLabel_->setText(compressMode_
-        ? tr("Archive suffix")
-        : tr("Suffix to remove"));
-    suffixEdit_->setAccessibleName(suffixLabel_->text());
+    suffixLabel_->setVisible(compressMode_);
+    suffixEdit_->setVisible(compressMode_);
+    suffixEdit_->setAccessibleName(tr("Archive suffix"));
     startButton_->setText(compressMode_ ? tr("Compress Files")
                                         : tr("Extract Files"));
     hideBanner();
@@ -597,7 +611,7 @@ void MainWindow::chooseFiles()
 
     const QString filter = compressMode_
         ? tr("All files (*)")
-        : tr("MGZ archives (*.mgz);;All files (*)");
+        : tr("MGZ and GZIP archives (*.mgz *.gz);;All files (*)");
     QStringList paths = QFileDialog::getOpenFileNames(
         this,
         compressMode_ ? tr("Choose files to compress")
@@ -607,11 +621,36 @@ void MainWindow::chooseFiles()
     if (!paths.isEmpty()) addFiles(paths);
 }
 
-bool MainWindow::isMgzArchive(const QString &path) const
+MainWindow::ArchiveFormat MainWindow::detectArchiveFormat(
+    const QString &path) const
 {
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return false;
-    return file.read(4) == QByteArrayLiteral("MGZ1");
+    if (!file.open(QIODevice::ReadOnly)) return ArchiveFormat::Unknown;
+
+    QByteArray header = file.read(4);
+    if (header == QByteArrayLiteral("MGZ1")) return ArchiveFormat::Mgz;
+    if (header.size() >= 3 &&
+        static_cast<unsigned char>(header[0]) == 0x1FU &&
+        static_cast<unsigned char>(header[1]) == 0x8BU &&
+        static_cast<unsigned char>(header[2]) == 0x08U)
+    {
+        return ArchiveFormat::Gzip;
+    }
+    return ArchiveFormat::Unknown;
+}
+
+QString MainWindow::archiveFormatName(ArchiveFormat format) const
+{
+    switch (format)
+    {
+    case ArchiveFormat::Mgz:
+        return tr("MGZ");
+    case ArchiveFormat::Gzip:
+        return tr("GZIP");
+    case ArchiveFormat::Unknown:
+        return tr("Unknown");
+    }
+    return tr("Unknown");
 }
 
 void MainWindow::addFiles(const QStringList &paths)
@@ -635,7 +674,11 @@ void MainWindow::addFiles(const QStringList &paths)
         QString key = QDir::cleanPath(absolutePath).toCaseFolded();
 
         if (!info.exists() || !info.isFile() || existing.contains(key)) continue;
-        if (!compressMode_ && !isMgzArchive(absolutePath))
+
+        ArchiveFormat format = compressMode_
+            ? ArchiveFormat::Mgz
+            : detectArchiveFormat(absolutePath);
+        if (format == ArchiveFormat::Unknown)
         {
             rejected.append(info.fileName());
             continue;
@@ -644,12 +687,15 @@ void MainWindow::addFiles(const QStringList &paths)
         auto task = std::make_unique<TaskEntry>();
         task->inputPath = absolutePath;
         task->inputSize = static_cast<quint64>(info.size());
+        task->format = format;
         task->item = new QTreeWidgetItem(fileTree_);
-        task->item->setIcon(0, iconProvider.icon(info));
-        task->item->setText(0, info.fileName());
-        task->item->setToolTip(0, absolutePath);
-        task->item->setText(1, formatBytes(task->inputSize));
-        task->item->setSizeHint(0, QSize(0, 46));
+        task->item->setIcon(FileColumn, iconProvider.icon(info));
+        task->item->setText(FileColumn, info.fileName());
+        task->item->setToolTip(FileColumn, absolutePath);
+        task->item->setText(FormatColumn, archiveFormatName(format));
+        task->item->setTextAlignment(FormatColumn, Qt::AlignCenter);
+        task->item->setText(SizeColumn, formatBytes(task->inputSize));
+        task->item->setSizeHint(FileColumn, QSize(0, 46));
 
         task->progress = new QProgressBar(fileTree_);
         task->progress->setRange(0, 100);
@@ -657,7 +703,7 @@ void MainWindow::addFiles(const QStringList &paths)
         task->progress->setFormat(tr("Ready"));
         task->progress->setAccessibleName(
             tr("Status for %1").arg(info.fileName()));
-        fileTree_->setItemWidget(task->item, 3, task->progress);
+        fileTree_->setItemWidget(task->item, StatusColumn, task->progress);
 
         task->removeButton = new QToolButton(fileTree_);
         task->removeButton->setIcon(style()->standardIcon(
@@ -666,7 +712,7 @@ void MainWindow::addFiles(const QStringList &paths)
         task->removeButton->setAccessibleName(
             tr("Remove %1 from the file list").arg(info.fileName()));
         task->removeButton->setCursor(Qt::PointingHandCursor);
-        fileTree_->setItemWidget(task->item, 4, task->removeButton);
+        fileTree_->setItemWidget(task->item, RemoveColumn, task->removeButton);
 
         TaskEntry *taskPointer = task.get();
         connect(task->removeButton, &QToolButton::clicked, this,
@@ -689,8 +735,10 @@ void MainWindow::addFiles(const QStringList &paths)
     {
         QString names = rejected.mid(0, 3).join(QStringLiteral(", "));
         if (rejected.size() > 3) names += tr(" and %1 more").arg(rejected.size() - 3);
-        showBanner(tr("Skipped files without a valid MGZ header: %1").arg(names),
-                   true);
+        showBanner(
+            tr("Skipped files without a valid MGZ or GZIP header: %1")
+                .arg(names),
+            true);
     }
 
     updateOutputPaths();
@@ -765,14 +813,19 @@ QString MainWindow::proposedOutputPath(const TaskEntry &task) const
     else
     {
         outputName = inputInfo.fileName();
-        if (outputName.endsWith(suffix, Qt::CaseInsensitive) &&
-            outputName.size() > suffix.size())
+        if (task.format == ArchiveFormat::Gzip &&
+            outputName.endsWith(QStringLiteral(".gz"), Qt::CaseInsensitive) &&
+            outputName.size() > 3)
         {
-            outputName.chop(suffix.size());
+            outputName.chop(3);
         }
         else
         {
-            outputName += QStringLiteral(".restored");
+            int extensionStart = outputName.lastIndexOf(QLatin1Char('.'));
+            if (task.format == ArchiveFormat::Mgz && extensionStart > 0)
+                outputName.truncate(extensionStart);
+            else
+                outputName += QStringLiteral(".restored");
         }
     }
 
@@ -813,8 +866,8 @@ void MainWindow::updateOutputPaths()
         }
         usedPaths.insert(QDir::cleanPath(unique).toCaseFolded());
         task->outputPath = unique;
-        task->item->setText(2, QFileInfo(unique).fileName());
-        task->item->setToolTip(2, unique);
+        task->item->setText(OutputColumn, QFileInfo(unique).fileName());
+        task->item->setToolTip(OutputColumn, unique);
     }
 
     refreshSummary();
@@ -892,8 +945,8 @@ bool MainWindow::resolveExistingOutputs()
             key = QDir::cleanPath(candidate).toCaseFolded();
         }
         task->outputPath = candidate;
-        task->item->setText(2, QFileInfo(candidate).fileName());
-        task->item->setToolTip(2, candidate);
+        task->item->setText(OutputColumn, QFileInfo(candidate).fileName());
+        task->item->setToolTip(OutputColumn, candidate);
         usedPaths.insert(key);
     }
 
@@ -934,8 +987,8 @@ bool MainWindow::resolveExistingOutputs()
             key = QDir::cleanPath(candidate).toCaseFolded();
         }
         task->outputPath = candidate;
-        task->item->setText(2, QFileInfo(candidate).fileName());
-        task->item->setToolTip(2, candidate);
+        task->item->setText(OutputColumn, QFileInfo(candidate).fileName());
+        task->item->setToolTip(OutputColumn, candidate);
         usedPaths.insert(key);
     }
     return true;
@@ -945,16 +998,20 @@ void MainWindow::startProcessing()
 {
     if (processing_ || tasks_.empty()) return;
 
-    const QString suffix = normalizedSuffix();
-    static const QRegularExpression validSuffix(
-        QStringLiteral(R"(^\.[A-Za-z0-9][A-Za-z0-9._-]{0,14}$)"));
-    if (!validSuffix.match(suffix).hasMatch())
+    if (compressMode_)
     {
-        showBanner(tr("Use a suffix such as .mgz, .huf, or .archive-1."), true);
-        suffixEdit_->setFocus();
-        return;
+        const QString suffix = normalizedSuffix();
+        static const QRegularExpression validSuffix(
+            QStringLiteral(R"(^\.[A-Za-z0-9][A-Za-z0-9._-]{0,14}$)"));
+        if (!validSuffix.match(suffix).hasMatch())
+        {
+            showBanner(
+                tr("Use a suffix such as .mgz, .huf, or .archive-1."), true);
+            suffixEdit_->setFocus();
+            return;
+        }
+        suffixEdit_->setText(suffix);
     }
-    suffixEdit_->setText(suffix);
 
     if (locationCombo_->currentIndex() == 1 &&
         (selectedOutputDirectory_.isEmpty() ||
@@ -979,7 +1036,14 @@ void MainWindow::startProcessing()
         task->progress->setRange(0, 100);
         task->progress->setValue(0);
         task->progress->setFormat(tr("Waiting"));
-        requests.append({task->inputPath, task->outputPath, compressMode_});
+        CodecOperation operation = CodecOperation::CompressMgz;
+        if (!compressMode_)
+        {
+            operation = task->format == ArchiveFormat::Gzip
+                ? CodecOperation::ExtractGzip
+                : CodecOperation::ExtractMgz;
+        }
+        requests.append({task->inputPath, task->outputPath, operation});
         activeTasks_.append(task.get());
     }
 
@@ -1043,7 +1107,8 @@ void MainWindow::startProcessing()
                     task->progress->setAccessibleDescription(QString());
                     task->progress->setValue(100);
                     task->progress->setFormat(tr("Done"));
-                    task->item->setToolTip(3, tr("Completed successfully"));
+                    task->item->setToolTip(
+                        StatusColumn, tr("Completed successfully"));
                     resultInputSize_ += inputSize;
                     resultOutputSize_ += outputSize;
                     resultCompressedBlocks_ += compressedBlocks;
@@ -1061,7 +1126,7 @@ void MainWindow::startProcessing()
                     task->progress->setValue(0);
                     task->progress->setFormat(cancelled
                         ? tr("Cancelled") : tr("Failed"));
-                    task->item->setToolTip(3, error);
+                    task->item->setToolTip(StatusColumn, error);
                     task->progress->setAccessibleDescription(error);
                     resultFailureCount_++;
                     showBanner(tr("%1: %2")
@@ -1111,7 +1176,7 @@ void MainWindow::setProcessing(bool processing)
     outputDirectoryEdit_->setEnabled(!processing);
     browseOutputButton_->setEnabled(!processing &&
                                     locationCombo_->currentIndex() == 1);
-    suffixEdit_->setEnabled(!processing);
+    suffixEdit_->setEnabled(!processing && compressMode_);
     startButton_->setEnabled(!processing && !tasks_.empty());
     cancelButton_->setVisible(processing);
     cancelButton_->setEnabled(processing);

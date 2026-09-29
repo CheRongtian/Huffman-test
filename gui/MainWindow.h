@@ -39,6 +39,13 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    enum class ArchiveFormat
+    {
+        Unknown,
+        Mgz,
+        Gzip
+    };
+
     enum class TaskState
     {
         Ready,
@@ -54,6 +61,7 @@ private:
         QString outputPath;
         QString error;
         quint64 inputSize = 0;
+        ArchiveFormat format = ArchiveFormat::Unknown;
         TaskState state = TaskState::Ready;
         QTreeWidgetItem *item = nullptr;
         QProgressBar *progress = nullptr;
@@ -83,7 +91,8 @@ private:
     QString proposedOutputPath(const TaskEntry &task) const;
     QString makeNumberedPath(const QString &path, int number) const;
     QString formatBytes(quint64 bytes) const;
-    bool isMgzArchive(const QString &path) const;
+    QString archiveFormatName(ArchiveFormat format) const;
+    ArchiveFormat detectArchiveFormat(const QString &path) const;
     bool resolveExistingOutputs();
 
     bool compressMode_ = true;

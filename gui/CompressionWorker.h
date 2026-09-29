@@ -8,11 +8,18 @@
 #include <atomic>
 #include <cstdint>
 
+enum class CodecOperation
+{
+    CompressMgz,
+    ExtractMgz,
+    ExtractGzip
+};
+
 struct CompressionRequest
 {
     QString inputPath;
     QString outputPath;
-    bool compress;
+    CodecOperation operation = CodecOperation::CompressMgz;
 };
 
 class CompressionWorker final : public QObject

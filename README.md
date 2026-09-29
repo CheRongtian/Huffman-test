@@ -3,7 +3,8 @@
 An educational block-based compression tool with a C11 codec, a command-line
 client, and an optional Qt 6 Widgets desktop application. It combines LZ77,
 Canonical Huffman coding, bitstream packing, and CRC32 in a custom `.mgz`
-file format.
+file format. The desktop application can also extract standard single-member
+`.gz` archives with its built-in DEFLATE decoder.
 
 ## Quick start
 
@@ -52,8 +53,9 @@ without compression.
 The `mgz_gui` target provides a local desktop interface with:
 
 - Drag-and-drop and keyboard-accessible file selection.
-- Compression and extraction modes.
+- MGZ compression plus MGZ and GZIP extraction modes.
 - Batch task processing with per-file progress and cancellation.
+- File-header detection for mixed MGZ/GZIP extraction batches.
 - Same-folder or selected-folder output.
 - A configurable archive suffix, with `.mgz` as the default.
 - Output conflict handling and completion statistics.
@@ -78,12 +80,16 @@ open "build/MGZ Compressor.app"
 - `checksum.c/.h`: Implements incrementally updatable IEEE CRC-32.
 - `format.c/.h`: Implements the MGZ format, block I/O, malformed-input
   validation, progress/cancellation callbacks, and the compression pipeline.
+- `gzip/gzip_decode.c/.h`: Implements streaming single-member GZIP
+  extraction, DEFLATE stored/fixed/dynamic blocks, validation, and CRC32.
+- `tools/gunzip.c`: Provides a small standalone GZIP extraction client.
 - `main.c`: Handles command-line arguments, statistics, and error reporting.
 - `gui/`: Implements the Qt 6 Widgets desktop interface and background task
   worker, including the non-blocking completion lightning overlay.
-- `flash.html`: Preserves the original browser-based lightning simulation as a
-  visual reference; the desktop application uses a lightweight native Qt
-  implementation at runtime.
+- `tests/gzip/`: Contains the standalone GZIP verification script and fixtures.
+- `reference/flash.html`: Preserves the original browser-based lightning
+  simulation as a visual reference; the desktop application uses a lightweight
+  native Qt implementation at runtime.
 
 ## MGZ v1 Format
 
@@ -118,5 +124,6 @@ packed bitstream. The decoder validates the file header, block sizes, Canonical
 Huffman table, LZ77 distances and lengths, trailing padding bits, original size,
 and whole-file CRC32.
 
-`.mgz` is a custom educational format and is not interoperable with standard
-gzip files.
+`.mgz` remains a custom educational format and is not interoperable with GZIP.
+The desktop Extract mode identifies the two formats by their file headers and
+dispatches them to their respective decoders.

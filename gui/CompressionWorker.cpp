@@ -1,5 +1,6 @@
 #include "CompressionWorker.h"
 
+#include "gzip/gzip_decode.h"
 #include "format.h"
 
 #include <QByteArray>
@@ -50,11 +51,25 @@ void CompressionWorker::run()
         QElapsedTimer timer;
         timer.start();
 
-        int success = request.compress
-            ? mgz_compress_file(inputPath.constData(), outputPath.constData(),
-                                &options, &stats, error, sizeof(error))
-            : mgz_decompress_file(inputPath.constData(), outputPath.constData(),
-                                  &options, &stats, error, sizeof(error));
+        int success = 0;
+        switch (request.operation)
+        {
+        case CodecOperation::CompressMgz:
+            success = mgz_compress_file(
+                inputPath.constData(), outputPath.constData(),
+                &options, &stats, error, sizeof(error));
+            break;
+        case CodecOperation::ExtractMgz:
+            success = mgz_decompress_file(
+                inputPath.constData(), outputPath.constData(),
+                &options, &stats, error, sizeof(error));
+            break;
+        case CodecOperation::ExtractGzip:
+            success = gzip_decompress_file(
+                inputPath.constData(), outputPath.constData(),
+                &options, &stats, error, sizeof(error));
+            break;
+        }
 
         emit taskFinished(
             index,
